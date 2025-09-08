@@ -14,28 +14,27 @@ from enum import Enum
 import warnings
 import tensorflow as tf
 
+import utils.sensor_realtime as SRT
+import utils.read_packets as RP
 
 # if needed, install hub driver for Hub: Adafruit HUZZAH32 - ESP32 Feather 
 # https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers?tab=overview
 
 
-
 # Constants
-modelFile = 'Models/tfmodel_5.onnx'
-
-
+modelFile = 'models/tfmodel_5.onnx'
 
 targetDeviceString = "Silicon Labs CP210x USB to UART Bridge"
-serial_port = FindTargetDevice(targetDeviceString)
+serial_port = SRT.FindTargetDevice(targetDeviceString)
 
 if (serial_port != None):
     targetDevicePresent = True
-    hubStatus = HubStatus.CONNECTED
+    hubStatus = SRT.HubStatus.CONNECTED
     print("Hub Connected!")
     serial_port.write(b'S')  # start recording command into serial port
 else:
     targetDevicePresent = False
-    hubStatus = HubStatus.DISCONNECTED
+    hubStatus = SRT.HubStatus.DISCONNECTED
 
 # How frequently to send a new HubSample in whole seconds
 hubUpdateTime = 1
@@ -56,7 +55,7 @@ running = True
 maxSamples = 20
 count = 0
 
-#For saving to a file
+# For saving to a file
 samples = []
 vgrfSamples = []
 vgrfWaveForms = []
@@ -65,29 +64,30 @@ testVGRFDelta = .5
 testLastVGRFUpdate = -1
 side = "Left"
 
-#Load the Model
+# Load the Model
 model = tf.saved_model.load('Models/tfmodel_5')
 
+# Initialize Step Detection Variables
 lStepTime = -1
 rStepTime = -1
 samples_gait_event = 100
 shankSampleTarget = 100
 
-#Time-based (0) or an attempted real time construction (1)
-StepDetectionMethod = 2
-
-#Sensor unicode values
+# Define sensor unicode id values
 waistID = "38"
 leftShankID = "39"
 rightShankID = "3a"
 
-
+# Main Real-time Processing Loop
 while running:
     try:
      
-        #If the device is connected, read data
+        # If the device is connected, read data
         if targetDevicePresent:
+
             for c in serial_port.read():
+
+                # Parse Packet Data
                 if newPacket:
                     line.append(hex(c))
                     if c == 204 and last_byte == 170:
@@ -96,7 +96,7 @@ while running:
                         line.append(hex(last_byte))
                         line.append(hex(c))
                     
-                    #A new packet/ End of the packet is detected
+                    # A new packet/ End of the packet is detected
                     elif c == 51 and last_byte == 85:
                         #print("Line: ",line)
                         newPacket = False
@@ -104,21 +104,21 @@ while running:
                         #print(time.time())
                         #Convert bytes to object
                         try:
-                            new_sample = ProcessPacket(line)
+                            new_sample = SRT.ProcessPacket(line)
                         except:
                             print("Error Creating Sample")
                             continue
 
                         #Create Shank Signals for step counting
                         if new_sample.id == leftShankID:
-                            if len(leftShankSamples)>300:
+                            if len(leftShankSamples) > 300:
                                 leftShankSamples = []
                                 leftWaistSamples =[]
                             leftShankSamples.append(new_sample)
                         elif new_sample.id == rightShankID:
-                            if len(leftShankSamples)>300:
+                            if len(leftShankSamples) > 300:
                                 rightShankSamples = []
-                                rightWaistSamples =[]
+                                rightWaistSamples = []
                             rightShankSamples.append(new_sample)
 
                         #Create Waist Signals for predictions
@@ -126,7 +126,7 @@ while running:
                             leftWaistSamples.append(new_sample)
                             rightWaistSamples.append(new_sample)
             
-                        sampleCount+=1
+                        sampleCount += 1
                         
                         # Update sensor status metrics
                         connectedSensors.add(new_sample.id)
@@ -134,164 +134,77 @@ while running:
                         lastSensorSampleTime = new_sample.time
 
                         # print(sampleCount)
-                        print(new_sample)
+                        # print(new_sample)
 
                         if sampleCount > 20:
                             raise StopIteration
                         
                         # StepCheck
                         print('Detecting Steps ...')
-                        if StepDetectionMethod == 0:
-                            #This method hasn't been updated in some time.
-                            if len(leftShankSamples) >= shankSampleTarget:
-                                # jerk = VectorNormJerk(leftShankSamples)
-                                jerk = VectorMagJerk(leftShankSamples)
-                                steps = FindHeelStrikes(jerk)
-                                print("Left Step Count:" + str(len(steps)))
-                                leftShankSamples = []
+                       
+                        if len(leftShankSamples) >= shankSampleTarget: # if sufficient samples to check for a gait event
+                            print('sufficient samples')
+                            VMA, jerk = SRT.GetVMAJ(leftShankSamples)
+                            Lind, pks = SRT.FindHeelStrikes(jerk)
 
-                            if len(rightShankSamples) >= shankSampleTarget:
-                                # jerk = VectorNormJerk(rightShankSamples)
-                                jerk = VectorMagJerk(rightShankSamples)
-                                steps = FindHeelStrikes(jerk)
-                                print("Right Step Count:" + str(len(steps)))
-                                rightShankSamples = []
-                        
-                        
-                        if StepDetectionMethod == 1:
-                            if leftStance:
-
-                                # Find second heelstrike, predict VGRF, send to STDOut, and save
-                                # Modified this to be heelstrike to heelstrike
-                                if len(leftShankSamples) >= minShankSampleCount:
-                                     jerk = VectorMagJerk(leftShankSamples)
-                                     steps = FindHeelStrikes(jerk)
-                                     if (len(steps) > 0):
-                                            print("Left Ending Heelstrike!")
-                                            leftStance = False
-                                            leftShankSamples = []
-                                            #Predict VGRF and send sample
-                                            #Use only 60% of the sample signal
-                                            stopIndex = int(len(leftWaistSamples)*.6)+1
-                                            with warnings.catch_warnings():
-                                                warnings.simplefilter("ignore")
-                                                leftVGRFSample = PredictPeakVGRF(leftWaistSamples[:stopIndex],leftPeakId,"Left")
-                                                jsonData = json.dumps(leftVGRFSample.__dict__)
-                                            print(jsonData,end='\n')
-                                            leftWaistSamples = []
-                                            leftPeakId+=1
-                                            vgrfSamples.append(jsonData)
-
-                            #Find first heel strike 
-                            elif len(leftShankSamples) >= minShankSampleCount:
-                                jerk = VectorMagJerk(leftShankSamples)
-                                steps = FindHeelStrikes(jerk)
-                                if (len(steps) > 0):
-                                    print("Left Step!")
+                            if len(Lind) > 0:
+                                #LStepTimes.append(leftShankSamples[Lind[0]][1])
+                                print("Left Step Found!")
+                                if not leftStance:
+                                    #print("First Step!")
                                     leftStance = True
-                                    leftShankSamples = []
-                            
-                            #Find second heelstrike, predict VGRF, send to STDOut, and save
-                            if rightStance:
-                                #Modified this to be heelstrike to heelstrike
-                                if len(rightShankSamples) >= minShankSampleCount:
-                                     jerk = VectorMagJerk(rightShankSamples)
-                                     steps = FindHeelStrikes(jerk)
-                                     if (len(steps) > 0):
-                                            print("Right Ending Step!")
-                                            rightStance = False
-                                            rightShankSamples = []
-                                            #Predict VGRF and send sample
-                                            #Use only 60% of the sample signal
-                                            stopIndex = int(len(rightWaistSamples)*.6)+1
-                                            rightVGRFSample = PredictPeakVGRF(rightWaistSamples[:stopIndex],rightPeakId,"Right")
+                                    leftWaistSamples = []
+                                    lStepTime = time.time()
+                                else:
+                                    currentTime = time.time()
+                                    if currentTime-lStepTime<2000:
+                                        print("Ending Step!")
+                                        stopIndex = int(len(leftWaistSamples)*.6)+1
+                                        with warnings.catch_warnings():
+                                            warnings.simplefilter("ignore")
+                                            print('Predicting vGRF')
+                                            leftVGRFSample = SRT.PredictPeakVGRF(leftWaistSamples[:stopIndex],leftPeakId,"Left", model)
+                                            print('Predicting vGRF')
+                                            jsonData = json.dumps(leftVGRFSample.__dict__)
+                                            print(jsonData)
+                                            #leftWaistSamples = []
+                                            vgrfSamples.append(jsonData)
+                                            leftPeakId+=1
+                                        #Get Waist Samples to Model
+                                    #else:
+                                        #print("Orphaned Step! Discarding!")
+                                    leftStance = False
+                            leftShankSamples = []
+                        if len(rightShankSamples) >= shankSampleTarget: # if sufficient samples to check for a gait event
+                            VMA, jerk = SRT.GetVMAJ(rightShankSamples)
+                            Rind, pks = SRT.FindHeelStrikes(jerk)
+
+                            if len(Rind) > 0:
+                                #LStepTimes.append(leftShankSamples[Lind[0]][1])
+                                #print("Right Step Found!")
+                                if not leftStance:
+                                    #print("First Step!")
+                                    rightStance = True
+                                    rightWaistSamples = []
+                                    rStepTime = time.time()
+                                else:
+                                    currentTime = time.time()
+                                    if currentTime-rStepTime<2000:
+                                        stopIndex = int(len(rightWaistSamples)*.6)+1
+                                        with warnings.catch_warnings():
+                                            warnings.simplefilter("ignore")
+                                            rightVGRFSample = SRT.PredictPeakVGRF(rightWaistSamples[:stopIndex],rightPeakId,"Right", session)
                                             jsonData = json.dumps(rightVGRFSample.__dict__)
                                             print(jsonData)
-                                            rightWaistSamples = []
                                             rightPeakId+=1
                                             vgrfSamples.append(jsonData)
-                            
-                            #Find first heel strike 
-                            elif len(rightShankSamples) >= minShankSampleCount:
-                                jerk = VectorMagJerk(rightShankSamples)
-                                steps = FindHeelStrikes(jerk)
-                                if (len(steps) > 0):
-                                    print("Right Step!")
-                                    rightStance = True
-                                    rightShankSamples = []
-                        
-                        if StepDetectionMethod == 2:
-                            if len(leftShankSamples) >= shankSampleTarget: # if sufficient samples to check for a gait event
-                                print('sufficient samples')
-                                VMA, jerk = GetVMAJ(leftShankSamples)
-                                Lind, pks = FindHeelStrikes(jerk)
-
-                                if len(Lind) > 0:
-                                    #LStepTimes.append(leftShankSamples[Lind[0]][1])
-                                    print("Left Step Found!")
-                                    if not leftStance:
-                                        #print("First Step!")
-                                        leftStance = True
-                                        leftWaistSamples = []
-                                        lStepTime = time.time()
-                                    else:
-                                        currentTime = time.time()
-                                        if currentTime-lStepTime<2000:
-                                            print("Ending Step!")
-                                            stopIndex = int(len(leftWaistSamples)*.6)+1
-                                            with warnings.catch_warnings():
-                                                warnings.simplefilter("ignore")
-                                                print('Predicting vGRF')
-                                                leftVGRFSample = PredictPeakVGRF(leftWaistSamples[:stopIndex],leftPeakId,"Left", model)
-                                                print('Predicting vGRF')
-                                                jsonData = json.dumps(leftVGRFSample.__dict__)
-                                                print(jsonData)
-                                                #leftWaistSamples = []
-                                                vgrfSamples.append(jsonData)
-                                                leftPeakId+=1
-                                            #Get Waist Samples to Model
-                                        #else:
-                                            #print("Orphaned Step! Discarding!")
-                                        leftStance = False
-                                leftShankSamples = []
-                            if len(rightShankSamples) >= shankSampleTarget: # if sufficient samples to check for a gait event
-                                VMA, jerk = GetVMAJ(rightShankSamples)
-                                Rind, pks = FindHeelStrikes(jerk)
-
-                                if len(Rind) > 0:
-                                    #LStepTimes.append(leftShankSamples[Lind[0]][1])
-                                    #print("Right Step Found!")
-                                    if not leftStance:
-                                        #print("First Step!")
-                                        rightStance = True
-                                        rightWaistSamples = []
-                                        rStepTime = time.time()
-                                    else:
-                                        currentTime = time.time()
-                                        if currentTime-rStepTime<2000:
-                                            stopIndex = int(len(rightWaistSamples)*.6)+1
-                                            with warnings.catch_warnings():
-                                                warnings.simplefilter("ignore")
-                                                rightVGRFSample = PredictPeakVGRF(rightWaistSamples[:stopIndex],rightPeakId,"Right", session)
-                                                jsonData = json.dumps(rightVGRFSample.__dict__)
-                                                print(jsonData)
-                                                rightPeakId+=1
-                                                vgrfSamples.append(jsonData)
-                                            
-                                            #print("Ending Step!")
-                                            #Get Waist Samples to Model
-                                        #else:
-                                        #    print("Orphaned Step! Discarding!")
-                                        rightStance = False
-                                rightShankSamples = []
+                                        
+                                    rightStance = False
+                            rightShankSamples = []
 
                         # Save sensor json
-
-                        #if (sampleCount == 8):
                         jsonData = json.dumps(new_sample.__dict__)
                         #Send to STDOut
-                        #NOT NEEDED ANYMORE
-                        #print(jsonData)
                         sampleCount = 0
                         samples.append(jsonData)
                         line = []
@@ -307,10 +220,10 @@ while running:
             # Sleep thread a set time
             # time.sleep(1)
             # Check for an attached device
-            serial_port = FindTargetDevice(targetDeviceString)
+            serial_port = SRT.FindTargetDevice(targetDeviceString)
             if (serial_port != None):
                 targetDevicePresent = True
-                hubStatus = HubStatus.CONNECTED
+                hubStatus = SRT.HubStatus.CONNECTED
     
             # Send a status update
             if (targetDevicePresent):
@@ -324,33 +237,36 @@ while running:
             if cur_time - sensorSampleTimes[key] > sensorTimeout:
                 if key in connectedSensors:
                     connectedSensors.remove(key)
-        if hubStatus != HubStatus.DISCONNECTED:
+        if hubStatus != SRT.HubStatus.DISCONNECTED:
             if len(sensorSampleTimes) != len(connectedSensors):
-                hubStatus = HubStatus.LOW_CONNECTIVITY
+                hubStatus = SRT.HubStatus.LOW_CONNECTIVITY
             else:
                 if connectionStabilizeTime == -1:
                     connectionStabilizeTime = cur_time
                 elif cur_time - connectionStabilizeTime >= connectionStablizeDuration:
                     connectionStabilizeTime = -1
-                    hubStatus = HubStatus.CONNECTED
+                    hubStatus = SRT.HubStatus.CONNECTED
 
 
         # Send HubSample
         if cur_time - lastHubUpdate >= hubUpdateTime:
-            jsonData = json.dumps(HubSample(cur_time,hubStatus,lastSensorSampleTime,sorted(connectedSensors)).__dict__)
+            jsonData = json.dumps(SRT.HubSample(cur_time,hubStatus,lastSensorSampleTime,sorted(connectedSensors)).__dict__)
             print(jsonData)
             #print(HubSample(cur_time,hubStatus,lastSensorSampleTime,connectedSensors))
             lastHubUpdate = cur_time
                 
     except KeyboardInterrupt:
+        # Handle keyboard interrupt
         running = False
         pass
+
     except serial.SerialException as e:
         # There is no new data from serial port
         print("Serial Exception!")
         targetDevicePresent = False
-        hubStatus = HubStatus.DISCONNECTED
+        hubStatus = SRT.HubStatus.DISCONNECTED
         pass
+
     except BaseException as e:
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
@@ -414,198 +330,5 @@ rightPeakId = 0
 
 sampleCount = 0
 
-#VMJerk values: Initialize once
-cutoff =6
-gain = cutoff / np.sqrt(2)
-sos = signal.butter(2, gain, fs =100, output='sos')
-
-#Actually passes values to the model
-def PredictPeakVGRF(waistSamples,id,side, model):
-
-    global vgrfWaveForms
-
-    #These parameters will have to be doublechecked
-    height = .8
-    distance = 10
-    prominence = .15
-    width = 2
-    # if model == None:
-    #     print("No Model Loaded")
-    #     return
-
-    magnitudes = []
-    print('getting samples')
-    # print(waistSamples)
-    for sample in waistSamples:
-        magnitudes.append(GetMagnitude(sample.accel))
-    #print(len(magnitudes))
-    print(magnitudes)
-    inter_magnitudes = signal.resample(magnitudes,100)
-    # inter_magnitudes = signal.resample_poly(magnitudes, 100, len(magnitudes))
-    # print(len(inter_magnitudes))
-    print(inter_magnitudes)
-    # print(type(inter_magnitudes))
-    # print(inter_magnitudes.shape)
-    waist = list([float(x) for x in inter_magnitudes])
-    print('input')
-
-    input = tf.TensorSpec.from_numpy(np.asarray(waist))
-    input.name = 'dense_24_input'
-    print(input)
-    # vgrf = model.predict([inter_magnitudes])[0]
-    try:
-    #     # vgrf = session.run(['dense_26'], {'dense_24_input': [np.float32([1]), 
-    #     #                                                      np.asarray(waist, dtype=np.float32)]})
-    #     vgrf = session.run(['dense_26'], {'dense_24_input': np.asarray(waist, dtype=np.float32)})
-
-    #     # vgrf = session.run(['dense_26'], {'dense_24_input': np.asarray(waist, dtype=np.float32)})
-        vgrf = model()
-        print('output')
-        print(vgrf)
-    except Exception as e:
-        print(f"{type(e)}: {e}")
-    # T = torch.from_numpy(np.asarray(waist))
-    # try:
-    #     vgrf = session.run(None, {'input': T})
-    # except:
-    #     raise 'error in running model'
-    #print(vgrf)
-
-    #save full wave form
-    vgrfWaveForm = VGRFWaveForm(id,time.time(),side,vgrf)
-    jsonData = str(vgrfWaveForm)
-    vgrfWaveForms.append(jsonData)
-
-    #Grab peak vgrf for stimulus
-    peaks,properties = signal.find_peaks(vgrf, height = height, prominence = prominence, width = width, distance = distance)
-    peakSample = VGRFSample(id,time.time(),side,properties['peak_heights'][0])
-    return peakSample
-
-def LoadModel():
-    return joblib.load(modelFile) 
-
-def GetMagnitude(sample):
-    return np.sqrt(sample[0] ** 2 + sample[1] ** 2 + sample[2] ** 2)
-
-#Derived from Ricky's example
-def VectorMagJerk(samples):
-    global sos
-    x = []
-    y = []
-    z = []
-    for sample in samples:
-        x.append(sample.accel[0])
-        y.append(sample.accel[1])
-        z.append(sample.accel[2])
-    x = np.array(x)
-    y = np.array(y)
-    z = np.array(z)
-    shankValues = np.array([x,y,z])
-    #Vector Norm Jerk
-    jerk = np.diff(np.linalg.norm(shankValues,axis=0))
-
-    F = signal.sosfiltfilt(sos,shankValues.T, axis = 0)
-    #Filt = pd.DataFrame(data=F)
-    xF = F[0]
-    yF = F[1]
-    zF = F[2]
-
-    VMF =np.sqrt(np.multiply(xF,xF) + np.multiply(yF,yF) + np.multiply(zF,zF)).tolist()
-
-    
-    return VMF
-
-def GetVMAJ(samples):
-    # return vector magnitude acceleration and jerk from list-based input
-    #global SampleCols 
-    
-    #Sam = np.reshape(samples, (len(samples), len(SampleCols)))
-    #x = np.array(Sam[:, 2])
-    #y = np.array(Sam[:, 3])
-    #z = np.array(Sam[:, 4])
-    #Values = np.array([x,y,z])
-
-    x = []
-    y = []
-    z = []
-    for sample in samples:
-        x.append(sample.accel[0])
-        y.append(sample.accel[1])
-        z.append(sample.accel[2])
-    x = np.array(x)
-    y = np.array(y)
-    z = np.array(z)
-    shankValues = np.array([x,y,z])
 
 
-    VMA = np.linalg.norm(shankValues,axis=0)
-    jerk = np.diff(VMA)     # Vector Norm Jerk
-    
-    return VMA, jerk
-
-def FindHeelStrikes(jerk):
-    ht = 3
-    dis = 50
-    IClocs, ICprops = signal.find_peaks(jerk, height=ht, distance=dis)
-    ICpks = [jerk[x] for x in IClocs]
-
-    return IClocs, ICpks
-
-
-#Currently no references.  Initial and Final event detection.  FindHeelStrikes is what's currently used
-def FindGaitEvents(jerk):
-    prom = 5 # specify promimence for small peak
-    [FClocs, FCprops] = signal.find_peaks(VMF, prominence=prom)
-    FCpks = [VMF[x] for x in FClocs]
-    
-    # get initial contact times
-    prom = (1, 5)  # specify promimence for large peak
-    wid = (5, 20)
-    [IClocs, ICprops] = signal.find_peaks(np.multiply(-1, VMF), prominence=prom, width=wid)
-    ICpks = [VMF[x] for x in IClocs]
-
-    return FCpks,ICpks
-
-
-
-#def FindHeelStrikes(VMF):
-#    prom = (.5, 4)  # specify promimence for large peak
-#    wid = (5, 30)
-#    IClocs, ICprops = signal.find_peaks(np.multiply(-1, VMF), prominence=prom, width=wid)
-#    ICpks = [VMF[x] for x in IClocs]
-#    #peaks,_ = scipy.signal.find_peaks(jerk,height = 5,distance=10)
-#    return ICpks
-
-#Need to test height band parameters tomorrow morning.
-def FindToeOffs(VMF):
-    prom = 5 # specify promimence for small peak
-    [FClocs, FCprops] = signal.find_peaks(VMF, prominence=prom)
-    FCpks = [VMF[x] for x in FClocs]
-    return FCpks
-
-
-class VGRFWaveForm:
-    def __init__(self):
-        self.id = -1
-        self.time = -1
-        self.side = ""
-        self.values = []
-    def __init__(self,new_id,new_time,new_side,new_values):
-        self.id = new_id
-        self.time = new_time
-        self.side = new_side
-        self.values = new_values
-    def __str__(self):
-        return str(self.id) +","+str(self.time)+","+str(self.side)+","+str(self.values).replace("[","").replace("]","")
-
-class VGRFSample:
-    def __init__(self):
-        self.id = -1
-        self.time = -1
-        self.side = ""
-        self.peakValue = -1
-    def __init__(self,new_id,new_time,new_side,new_peakValue):
-        self.id = new_id
-        self.time = new_time
-        self.side = new_side
-        self.peakValue = new_peakValue

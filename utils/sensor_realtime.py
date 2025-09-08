@@ -2,7 +2,9 @@ import serial
 import time
 from enum import Enum
 import struct
-
+import numpy as np
+from scipy import signal
+import tensorflow as tf
 
 class Sample:
     def __init__(self):
@@ -142,3 +144,192 @@ def ProcessPacket(packetBin):
     # print(new_sample)
     # print('\n')
     return new_sample
+
+
+
+#Actually passes values to the model
+def PredictPeakVGRF(waistSamples,id,side, model):
+
+    global vgrfWaveForms
+
+    #These parameters will have to be doublechecked
+    height = .8
+    distance = 10
+    prominence = .15
+    width = 2
+    # if model == None:
+    #     print("No Model Loaded")
+    #     return
+
+    magnitudes = []
+    print('getting samples')
+    # print(waistSamples)
+    for sample in waistSamples:
+        magnitudes.append(GetMagnitude(sample.accel))
+    #print(len(magnitudes))
+    print(magnitudes)
+    inter_magnitudes = signal.resample(magnitudes,100)
+    # inter_magnitudes = signal.resample_poly(magnitudes, 100, len(magnitudes))
+    # print(len(inter_magnitudes))
+    print(inter_magnitudes)
+    # print(type(inter_magnitudes))
+    # print(inter_magnitudes.shape)
+    waist = list([float(x) for x in inter_magnitudes])
+    print('input')
+
+    input = tf.TensorSpec.from_numpy(np.asarray(waist))
+    input.name = 'dense_24_input'
+    print(input)
+    # vgrf = model.predict([inter_magnitudes])[0]
+    try:
+    #     # vgrf = session.run(['dense_26'], {'dense_24_input': [np.float32([1]), 
+    #     #                                                      np.asarray(waist, dtype=np.float32)]})
+    #     vgrf = session.run(['dense_26'], {'dense_24_input': np.asarray(waist, dtype=np.float32)})
+
+    #     # vgrf = session.run(['dense_26'], {'dense_24_input': np.asarray(waist, dtype=np.float32)})
+        vgrf = model()
+        print('output')
+        print(vgrf)
+    except Exception as e:
+        print(f"{type(e)}: {e}")
+    # T = torch.from_numpy(np.asarray(waist))
+    # try:
+    #     vgrf = session.run(None, {'input': T})
+    # except:
+    #     raise 'error in running model'
+    #print(vgrf)
+
+    #save full wave form
+    vgrfWaveForm = VGRFWaveForm(id,time.time(),side,vgrf)
+    jsonData = str(vgrfWaveForm)
+    vgrfWaveForms.append(jsonData)
+
+    #Grab peak vgrf for stimulus
+    peaks,properties = signal.find_peaks(vgrf, height = height, prominence = prominence, width = width, distance = distance)
+    peakSample = VGRFSample(id,time.time(),side,properties['peak_heights'][0])
+    return peakSample
+
+def LoadModel():
+    return joblib.load(modelFile) 
+
+def GetMagnitude(sample):
+    return np.sqrt(sample[0] ** 2 + sample[1] ** 2 + sample[2] ** 2)
+
+#Derived from Ricky's example
+# VMJerk values: Initialize once
+cutoff = 6
+gain = cutoff / np.sqrt(2)
+sos = signal.butter(2, gain, fs=100, output='sos')
+
+def VectorMagJerk(samples):
+    global sos
+    x = []
+    y = []
+    z = []
+    for sample in samples:
+        x.append(sample.accel[0])
+        y.append(sample.accel[1])
+        z.append(sample.accel[2])
+    x = np.array(x)
+    y = np.array(y)
+    z = np.array(z)
+    shankValues = np.array([x,y,z])
+    # Vector Norm Jerk
+    jerk = np.diff(np.linalg.norm(shankValues,axis=0))
+
+    F = signal.sosfiltfilt(sos,shankValues.T, axis = 0)
+    #Filt = pd.DataFrame(data=F)
+    xF = F[0]
+    yF = F[1]
+    zF = F[2]
+
+    VMF = np.sqrt(np.multiply(xF,xF) + np.multiply(yF,yF) + np.multiply(zF,zF)).tolist()
+    return VMF
+
+def GetVMAJ(samples):
+    # return vector magnitude acceleration and jerk from list-based input
+    #global SampleCols 
+
+    x = []
+    y = []
+    z = []
+    for sample in samples:
+        x.append(sample.accel[0])
+        y.append(sample.accel[1])
+        z.append(sample.accel[2])
+    x = np.array(x)
+    y = np.array(y)
+    z = np.array(z)
+    shankValues = np.array([x,y,z])
+
+    VMA = np.linalg.norm(shankValues,axis=0)
+    jerk = np.diff(VMA)     # Vector Norm Jerk
+    
+    return VMA, jerk
+
+def FindHeelStrikes(jerk):
+    ht = 3
+    dis = 50
+    IClocs, ICprops = signal.find_peaks(jerk, height=ht, distance=dis)
+    ICpks = [jerk[x] for x in IClocs]
+
+    return IClocs, ICpks
+
+
+#Currently no references.  Initial and Final event detection.  FindHeelStrikes is what's currently used
+def FindGaitEvents(jerk):
+    prom = 5 # specify promimence for small peak
+    [FClocs, FCprops] = signal.find_peaks(VMF, prominence=prom)
+    FCpks = [VMF[x] for x in FClocs]
+    
+    # get initial contact times
+    prom = (1, 5)  # specify promimence for large peak
+    wid = (5, 20)
+    [IClocs, ICprops] = signal.find_peaks(np.multiply(-1, VMF), prominence=prom, width=wid)
+    ICpks = [VMF[x] for x in IClocs]
+
+    return FCpks,ICpks
+
+
+
+#def FindHeelStrikes(VMF):
+#    prom = (.5, 4)  # specify promimence for large peak
+#    wid = (5, 30)
+#    IClocs, ICprops = signal.find_peaks(np.multiply(-1, VMF), prominence=prom, width=wid)
+#    ICpks = [VMF[x] for x in IClocs]
+#    #peaks,_ = scipy.signal.find_peaks(jerk,height = 5,distance=10)
+#    return ICpks
+
+#Need to test height band parameters tomorrow morning.
+def FindToeOffs(VMF):
+    prom = 5 # specify promimence for small peak
+    [FClocs, FCprops] = signal.find_peaks(VMF, prominence=prom)
+    FCpks = [VMF[x] for x in FClocs]
+    return FCpks
+
+
+class VGRFWaveForm:
+    def __init__(self):
+        self.id = -1
+        self.time = -1
+        self.side = ""
+        self.values = []
+    def __init__(self,new_id,new_time,new_side,new_values):
+        self.id = new_id
+        self.time = new_time
+        self.side = new_side
+        self.values = new_values
+    def __str__(self):
+        return str(self.id) +","+str(self.time)+","+str(self.side)+","+str(self.values).replace("[","").replace("]","")
+
+class VGRFSample:
+    def __init__(self):
+        self.id = -1
+        self.time = -1
+        self.side = ""
+        self.peakValue = -1
+    def __init__(self,new_id,new_time,new_side,new_peakValue):
+        self.id = new_id
+        self.time = new_time
+        self.side = new_side
+        self.peakValue = new_peakValue
