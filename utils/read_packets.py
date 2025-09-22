@@ -3,6 +3,12 @@ import struct
 import time
 import threading
 import pandas as pd
+import numpy as np
+from .config import PipelineConfig
+import matplotlib.pyplot as plt
+
+from utils.stance import StanceAnalyzer
+from utils.sensor import SensorData, input_df, _process_sensor_df
 
 # written by: Ratan Gundami, 2025
 
@@ -22,8 +28,8 @@ serial_lock = threading.Lock()
 serial_comm = None
 running = True
 
-packet_analysis = False
-analysis_window = 1000
+packet_analysis = True
+analysis_window = 1000 # n frames to hold in buffer for step analysis and vgrf predictions
 Analysis_DF = pd.DataFrame(columns=['DeviceID', 'PacketID', 'Timestamp'])
 duplicate_counter = 0
 ooo_counter = 0
@@ -197,27 +203,158 @@ def send_data(message):
         serial_comm.write(data_bytes)
         print(f"Sent: {data_bytes}")
 
-def main():
-    global serial_comm, running
-    serial_comm = serial.Serial(PORT, BAUDRATE, timeout=1)
-    print(f"Connecting to {PORT} at {BAUDRATE} baud...")
+
+def process_packet(packet, df, steps_df):
+    # handle_data_packet(struct.pack(DATAPACKET_FORMAT, packet['PacketID'],
+    #                                int(packet['AccelX']/accel_scale), int(packet['AccelY']/accel_scale), int(packet['AccelZ']/accel_scale),
+    #                                int(packet['GyroX']/gyro_scale), int(packet['GyroY']/gyro_scale), int(packet['GyroZ']/gyro_scale),
+    #                                int(packet['MagX']/magneto_scale), int(packet['MagY']/magneto_scale), int(packet['MagZ']/magneto_scale),
+    #                                packet['Flags'], packet['Battery']) + struct.pack(HEADER_FORMAT, 0x02, 20, packet['DeviceID'], packet['Timestamp']) + struct.pack(FOOTER_FORMAT, packet['CRC']))
+
+    # append packet to dataframe
+    # print(df.head())
+    if len(df) == 0:
+        time = 0.0
+    else:
+        time = (packet['Timestamp'] - df['Timestamp'].min()) / 1000.0 # in seconds
+
+    df.loc[len(df)] = [packet['PacketType'], packet['PayloadLen'], packet['DeviceID'], 
+                       packet['Timestamp'], packet['PacketID'], 
+                       [packet['AccelX'], packet['AccelY'], packet['AccelZ']], 
+                    #    packet['GyroX'], packet['GyroY'], packet['GyroZ'], 
+                    #    packet['MagX'], packet['MagY'], packet['MagZ'], 
+                       packet['Flags'], packet['Battery'], packet['CRC'], time]
     
-    reader_thread = threading.Thread(target=read_serial, daemon=True)
-    reader_thread.start()
+    # df['time'] = (df['Timestamp'] - df['Timestamp'].min()) / 1000.0 # in seconds
+    # print(df.head())
 
-    try:
-        while True:
-            user_input = input("")
-            if user_input.lower() == 'exit':
-                break
-            send_data(user_input)
-            
-    except KeyboardInterrupt:
-        pass
-    finally:
-        running = False
-        serial_comm.close()
-        print("Serial port closed.")
+    Sensors = input_df(df.copy())
+    # print(Sensors.keys(), Sensors['left'].shape, Sensors['right'].shape, Sensors['waist'].shape)
 
-if __name__ == "__main__":
-    main()
+    # ensure enough data for analysis - set buffer size (est_samp_freq * search_seconds)
+    est_samp_freq = 200
+    search_seconds = 10
+    start = len(df) - est_samp_freq * search_seconds
+    # print('Start index for analysis: ', start, '   Total Samples: ', len(df))
+    if start < 0 or len(df) < est_samp_freq * search_seconds:
+        # print("Not enough data for analysis")
+        return df, steps_df
+    
+    # search for steps in the recent buffer of data
+    # print('Searching for steps...')
+    # for s in Sensors.keys():
+    #     print(s)
+    #     Sensors[s] = Sensors[s].iloc[start:, :].reset_index(drop=True)
+    #     if len(Sensors[s]) == 0:
+    #         # print(Sensors)
+    #         print(f"No data for sensor: {s}")
+    #         return df, steps_df
+    # Sensors = [Sensors[s].iloc[start:, :].reset_index(drop=True) for s in Sensors]
+
+
+    # process sensor data: Parse, resample, and filter
+    ProcessedSensors = {}
+    SensorNames = ['left', 'right', 'waist']
+    for s in SensorNames:
+        ProcessedSensors[s] = _process_sensor_df(Sensors[s])
+    if any(ProcessedSensors[s] is None for s in SensorNames):
+        print("Error processing sensor data")
+        return df, steps_df
+    # print(ProcessedSensors)
+
+
+    # identify steps
+    config = PipelineConfig(
+        accel_peak_params={
+            'height': 1.0,
+            'prominence': 0.5,
+            'width': 5.0,
+            'distance': 10
+        },
+        jerk_peak_params={
+            'height': 0.0,
+            'prominence': 0.1
+        },
+        jerk_window_size=50,
+        stance_matching_time_threshold=50,
+        accel_filters=[],
+        vgrf_filters=[],
+        min_stance_size=60,
+        max_stance_size=140
+        )
+
+    print('Searching for steps...')
+    SA = StanceAnalyzer(config)
+    left_strikes, left_stances = SA.extract_sensor_stances(
+        ProcessedSensors['left']['accel_filtered'],
+        ProcessedSensors['left']['accel'],
+        ProcessedSensors['waist']['accel_filtered'],
+        # config # <--- Uncomment to use your own config
+    )
+        
+    right_strikes, right_stances = SA.extract_sensor_stances(
+        ProcessedSensors['right']['accel_filtered'],    
+        ProcessedSensors['right']['accel'],
+        ProcessedSensors['waist']['accel_filtered'],
+        # config # <--- Uncomment to use your own config
+    )
+
+    if time > 4:
+        print(f"{time} {len(df)} Left steps found: {left_strikes}  Right steps found: {right_strikes}")
+        print(f"Left stances: {len(left_stances)}  Right stances: {len(right_stances)}")
+        
+    if time > 7:
+        plt.figure()
+        plt.plot(ProcessedSensors['left']['accel_filtered'], label='Left Accel Filtered')
+        plt.plot(ProcessedSensors['right']['accel_filtered'], label='Right Accel Filtered')
+        plt.plot(ProcessedSensors['waist']['accel_filtered'], label='Waist Accel Filtered')
+        for x in left_strikes:
+            plt.axvline(x=x, color='blue', linestyle='--')
+        for x in right_strikes:
+            plt.axvline(x=x, color='orange', linestyle='--')
+        plt.legend()
+        plt.show()
+        raise StopIteration
+
+
+    # if len(left_strikes) > 0 or len(right_strikes) > 0:
+    #     print(time, left_strikes, right_strikes)
+    #     # add to steps_df
+    #     raise StopIteration
+        
+
+    # parse gait cycles
+
+
+    # send to model for prediction
+
+
+    # log results for saving later
+
+    return df, steps_df
+
+
+# def main():
+#     global serial_comm, running
+#     serial_comm = serial.Serial(PORT, BAUDRATE, timeout=1)
+#     print(f"Connecting to {PORT} at {BAUDRATE} baud...")
+    
+#     reader_thread = threading.Thread(target=read_serial, daemon=True)
+#     reader_thread.start()
+
+#     try:
+#         while True:
+#             user_input = input("")
+#             if user_input.lower() == 'exit':
+#                 break
+#             send_data(user_input)
+
+#     except KeyboardInterrupt:
+#         pass
+#     finally:
+#         running = False
+#         serial_comm.close()
+#         print("Serial port closed.")
+
+# if __name__ == "__main__":
+#     main()

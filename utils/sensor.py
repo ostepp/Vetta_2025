@@ -40,17 +40,24 @@ def _resample_accel(df: pd.DataFrame, resample_freq: int) -> pd.DataFrame:
     Returns:
         DataFrame with resampled accelerometer data
     """
-    start, end = df['time'].iloc[0], df['time'].iloc[-1]
-    interval = 1 / resample_freq
+    try:
+        # print(df['time'])
+        start, end = np.nanmin(df['time']), np.nanmax(df['time'])
+        interval = 1 / resample_freq
 
-    out_df = pd.DataFrame({
-        'time': np.arange(start, end, interval),
-        'accel': np.interp(
-            np.arange(start, end, interval),
-            df['time'],
-            df['accel']
-        )
-    })
+        out_df = pd.DataFrame({
+            'time': np.arange(start, end, interval),
+            'accel': np.interp(
+                np.arange(start, end, interval),
+                df['time'],
+
+                df['accel']
+            )
+        })
+    except:
+        print(df)
+        raise StopIteration
+    
     return out_df
 
 def _read_sensors_json(file_path: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
@@ -82,34 +89,66 @@ def _read_sensors_json(file_path: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.D
         }
 
         return tuple(organize(df) for df in sensor_data.values())
+    
+def input_df(df) -> dict: #Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Read and parse sensor data from JSON file.
+    
+    Args:
+        file_path: Path to the JSON file containing sensor data
+        
+    Returns:
+        Tuple of DataFrames (left, right, waist) containing raw sensor data
+        
+    Raises:
+        FileNotFoundError: If the specified file doesn't exist
+    """
+    def organize(df: pd.DataFrame) -> pd.DataFrame:
+        """Sort and clean sensor DataFrame."""
+        return df.sort_values(by='time').reset_index(drop=True)
+
+    # Extract data for each sensor
+    sensor_data = {
+        'waist': organize(df[df['DeviceID'] == 1]),
+        'left': organize(df[df['DeviceID'] == 2]),
+        'right': organize(df[df['DeviceID'] == 3])
+    }
+
+    return sensor_data #tuple(organize(df) for df in sensor_data.values())
 
 def _process_sensor_df(
     df: pd.DataFrame,
-    resample_freq: int,
-    butter_ord: int,
-    butter_cutoff: float
+    resample_freq: int = 100,
+    butter_ord: int = 4,
+    butter_cutoff: float = 10
 ) -> pd.DataFrame:
     """Process sensor data with normalization, resampling, and filtering.
     
     Args:
         df: Raw sensor DataFrame
-        resample_freq: Target sampling frequency in Hz
-        butter_ord: Order of Butterworth filter
-        butter_cutoff: Cutoff frequency for Butterworth filter
-        
+        resample_freq: Target sampling frequency in Hz (100 Hz default)
+        butter_ord: Order of Butterworth filter (4th order default)
+        butter_cutoff: Cutoff frequency for Butterworth filter (0.2 default)
+
     Returns:
         Processed DataFrame with normalized, resampled, and filtered data
     """
     # Normalize acceleration vectors
     df['accel'] = df['accel'].apply(np.linalg.norm)
 
-    # Resample and convert to Gs
+
+    # Resample
     df = _resample_accel(df, resample_freq)
-    df['accel'] /= GRAVITY
+
+    # convert to Gs (if needed)
+    # df['accel'] /= GRAVITY 
 
     # Apply Butterworth filter
-    sos = signal.butter(butter_ord, butter_cutoff, output='sos')
-    df['accel_filtered'] = signal.sosfiltfilt(sos, df['accel'])
+    try:
+        sos = signal.butter(butter_ord, butter_cutoff, fs=resample_freq, output='sos')
+        df['accel_filtered'] = signal.sosfiltfilt(sos, df['accel'])
+    except:
+
+        df['accel_filtered'] = df['accel']
 
     return df
 

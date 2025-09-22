@@ -33,6 +33,9 @@ class SignalProcessor:
         Returns:
             Tuple of (raw strike indices, refined strike indices)
         """
+        if len(accel) < self.config.min_stance_size:
+            return [], []
+        
         # Step 1: Find all peaks in filtered acceleration signal
         accel_peaks, _ = signal.find_peaks(accel, **self.config.accel_peak_params)
 

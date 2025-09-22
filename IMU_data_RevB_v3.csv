@@ -1,0 +1,1 @@
+PacketType,PayloadLen,DeviceID,Timestamp,PacketID,AccelX,AccelY,AccelZ,GyroX,GyroY,GyroZ,MagX,MagY,MagZ,Flags,Battery,CRC
