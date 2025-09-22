@@ -262,8 +262,7 @@ def process_packet(packet, df, steps_df):
         return df, steps_df
     # print(ProcessedSensors)
 
-
-    # identify steps
+    # set gait cycle identification parameters
     config = PipelineConfig(
         accel_peak_params={
             'height': 1.0,
@@ -283,6 +282,7 @@ def process_packet(packet, df, steps_df):
         max_stance_size=140
         )
 
+    # identify steps and parse gait cycles
     print('Searching for steps...')
     SA = StanceAnalyzer(config)
     left_strikes, left_stances = SA.extract_sensor_stances(
@@ -302,7 +302,7 @@ def process_packet(packet, df, steps_df):
     if time > 4:
         print(f"{time} {len(df)} Left steps found: {left_strikes}  Right steps found: {right_strikes}")
         print(f"Left stances: {len(left_stances)}  Right stances: {len(right_stances)}")
-        
+
     if time > 7:
         plt.figure()
         plt.plot(ProcessedSensors['left']['accel_filtered'], label='Left Accel Filtered')
@@ -315,16 +315,7 @@ def process_packet(packet, df, steps_df):
         plt.legend()
         plt.show()
         raise StopIteration
-
-
-    # if len(left_strikes) > 0 or len(right_strikes) > 0:
-    #     print(time, left_strikes, right_strikes)
-    #     # add to steps_df
-    #     raise StopIteration
         
-
-    # parse gait cycles
-
 
     # send to model for prediction
 
@@ -332,29 +323,3 @@ def process_packet(packet, df, steps_df):
     # log results for saving later
 
     return df, steps_df
-
-
-# def main():
-#     global serial_comm, running
-#     serial_comm = serial.Serial(PORT, BAUDRATE, timeout=1)
-#     print(f"Connecting to {PORT} at {BAUDRATE} baud...")
-    
-#     reader_thread = threading.Thread(target=read_serial, daemon=True)
-#     reader_thread.start()
-
-#     try:
-#         while True:
-#             user_input = input("")
-#             if user_input.lower() == 'exit':
-#                 break
-#             send_data(user_input)
-
-#     except KeyboardInterrupt:
-#         pass
-#     finally:
-#         running = False
-#         serial_comm.close()
-#         print("Serial port closed.")
-
-# if __name__ == "__main__":
-#     main()

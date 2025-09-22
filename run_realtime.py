@@ -43,8 +43,6 @@ ESPData = pd.DataFrame(columns=['PacketType', 'PayloadLen', 'DeviceID',
 # ESPData.to_csv(csv_file, index=False)
 
 
-
-
 def main():
     # global serial_comm, running
     # serial_comm = serial.Serial(PORT, BAUDRATE, timeout=1)
@@ -52,18 +50,16 @@ def main():
     
     # reader_thread = threading.Thread(target=rp.read_serial, daemon=True)
     # reader_thread.start()
-    l_step_count = 0
-    r_step_count = 0
+    w_acc_cols = [f'w_accel_{i}' for i in range(0, 100)]
     vgrf_cols = [f'vGRF_{i}' for i in range(0, 100)]
     steps_df = pd.DataFrame(columns=['Timestamp', 'Side', 'Start_Frame', 'End_Frame', 
-                                     'PeakvGRF'] + vgrf_cols)
-    
-    steps_df.head()
+                                     'PeakvGRF'] + w_acc_cols + vgrf_cols)
+    # steps_df.head()
 
     # pretend to run real-time processing loop
     data = pd.read_csv('IMU_data_RevB_v3_09112025_Walk1.csv')
     # print(data.head())
-    received_packets = 0
+    # received_packets = 0
 
     for index, row in data.iterrows():
         # simulate real-time data reception
