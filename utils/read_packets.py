@@ -375,7 +375,7 @@ def process_packet(packet, stream_df, steps_df, vgrf_df,axes, verbose=False, plo
 
 
     # plot results
-    if time > 6:
+    if time > 6 and plot:
 
         ax1 = axes[0]  # Top subplot
         ax2 = axes[1]  # Middle subplot
