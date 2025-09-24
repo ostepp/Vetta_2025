@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 # Model path for stance prediction
-MODEL_PATH = "tfmodel_5_RP.onnx"
+MODEL_PATH = "models/tfmodel_5_RP.onnx"
 
 # Global session variable for lazy loading
 _session = None

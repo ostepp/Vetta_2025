@@ -108,9 +108,12 @@ def input_df(df) -> dict: #Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
 
     # Extract data for each sensor
     sensor_data = {
-        'waist': organize(df[df['DeviceID'] == 1]),
-        'left': organize(df[df['DeviceID'] == 2]),
-        'right': organize(df[df['DeviceID'] == 3])
+        'waist': df[df['DeviceID'] == 1],
+        'left': df[df['DeviceID'] == 2],
+        'right': df[df['DeviceID'] == 3]
+        # 'waist': organize(df[df['DeviceID'] == 1]),
+        # 'left': organize(df[df['DeviceID'] == 2]),
+        # 'right': organize(df[df['DeviceID'] == 3])
     }
 
     return sensor_data #tuple(organize(df) for df in sensor_data.values())
@@ -133,8 +136,8 @@ def _process_sensor_df(
         Processed DataFrame with normalized, resampled, and filtered data
     """
     # Normalize acceleration vectors
-    df['accel'] = df['accel'].apply(np.linalg.norm)
-
+    norm = df['accel'].apply(np.linalg.norm)
+    df['accel'] = norm
 
     # Resample
     df = _resample_accel(df, resample_freq)
