@@ -23,11 +23,11 @@ DATAPACKET_FORMAT = '<I9hBB'
 HEADER_SIZE = struct.calcsize(HEADER_FORMAT)  # Calculate expected header size
 FOOTER_SIZE = struct.calcsize(FOOTER_FORMAT)  # Calculate expected footer size
 
-PORT = "COM8" # Com port of the device
-BAUDRATE = 921600
+# PORT = "COM8" # Com port of the device
+# BAUDRATE = 921600
 
 serial_lock = threading.Lock()
-serial_comm = None
+# serial_comm = None
 running = True
 
 packet_analysis = True
@@ -42,13 +42,13 @@ accel_scale = 2.0 / 32768.0
 gyro_scale = 250.0 / 32768.0
 magneto_scale = 4.0 / 32768.0
 
-csv_file = "IMU_data_RevB_v3.csv"
-ESPData = pd.DataFrame(columns=['PacketType', 'PayloadLen', 'DeviceID', 'Timestamp', 'PacketID', 
-                                'AccelX', 'AccelY', 'AccelZ', 
-                                'GyroX', 'GyroY', 'GyroZ', 
-                                'MagX', 'MagY', 'MagZ', 
-                                'Flags', 'Battery', 'CRC'])
-ESPData.to_csv(csv_file, index=False)
+# csv_file = "IMU_data_RevB_v3.csv"
+# ESPData = pd.DataFrame(columns=['PacketType', 'PayloadLen', 'DeviceID', 'Timestamp', 'PacketID', 
+#                                 'AccelX', 'AccelY', 'AccelZ', 
+#                                 'GyroX', 'GyroY', 'GyroZ', 
+#                                 'MagX', 'MagY', 'MagZ', 
+#                                 'Flags', 'Battery', 'CRC'])
+# ESPData.to_csv(csv_file, index=False)
 
 
 def calculate_crc8(data):

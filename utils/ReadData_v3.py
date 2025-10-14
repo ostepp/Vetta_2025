@@ -13,7 +13,7 @@ DATAPACKET_FORMAT = '<I9hBB'
 HEADER_SIZE = struct.calcsize(HEADER_FORMAT)  # Calculate expected header size
 FOOTER_SIZE = struct.calcsize(FOOTER_FORMAT)  # Calculate expected footer size
 
-PORT = "COM8" # Com port of the device
+PORT = "COM3" # Com port of the device (default was 8)
 BAUDRATE = 921600
 
 serial_lock = threading.Lock()

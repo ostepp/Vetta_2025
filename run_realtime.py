@@ -15,11 +15,12 @@ DATAPACKET_FORMAT = '<I9hBB'
 HEADER_SIZE = struct.calcsize(HEADER_FORMAT)  # Calculate expected header size
 FOOTER_SIZE = struct.calcsize(FOOTER_FORMAT)  # Calculate expected footer size
 
-PORT = "COM8" # Com port of the device
+PORT = "COM3" # Com port of the device
 BAUDRATE = 921600
 
 serial_lock = threading.Lock()
 serial_comm = None
+# serial_comm = serial.Serial(PORT, BAUDRATE, timeout=1)
 running = True
 
 packet_analysis = True
@@ -33,6 +34,33 @@ loss_counter = 0
 accel_scale = 2.0 / 32768.0
 gyro_scale = 250.0 / 32768.0
 magneto_scale = 4.0 / 32768.0
+
+def read_serial():
+    global running, serial_comm, ESPData, steps_df, vgrf_df, axes
+    while running:
+        # Read just the header
+        header_bytes = serial_comm.read(HEADER_SIZE)
+        if len(header_bytes) < HEADER_SIZE:
+            continue
+
+        try:
+            packet_type, payload_len, device_id, timestamp = RP.parse_header(header_bytes)
+            remaining_bytes = serial_comm.read(payload_len + FOOTER_SIZE)
+            # Read the payload and footer based on packet_type
+            if len(remaining_bytes) == payload_len + FOOTER_SIZE:
+                if packet_type == 0x01:
+                    RP.handle_info_packet(header_bytes + remaining_bytes)
+                elif packet_type == 0x02:
+                    packet = RP.handle_data_packet(header_bytes + remaining_bytes)
+                    # TODO: here is where I expect we need to process packets in real time. These are global 
+                    # variables, so they should still be present for exporting at the end. 
+                    ESPData, steps_df, vgrf_df, axes = RP.process_packet(packet, ESPData, steps_df, vgrf_df, axes)
+                else:
+                    # Received unknown packet
+                    pass
+        
+        except struct.error:
+            print("Error unpacking data")
 
 
 def main(run):
@@ -49,26 +77,36 @@ def main(run):
             global serial_comm, running, ESPData, steps_df, vgrf_df, axes
 
             # initialize dataframes to store results
-            w_acc_cols = [f'waist_accel_{i}' for i in range(0, 100)]
-            steps_df = pd.DataFrame(columns=['Timestamp', 'Side', 'Start_Frame', 'End_Frame', 'ID'] + w_acc_cols) 
-            vgrf_cols = [f'vGRF_{i}' for i in range(0, 100)]
-            vgrf_df = pd.DataFrame(columns=['ID','PeakvGRF'] + vgrf_cols)
-            ESPData = pd.DataFrame(columns=['PacketType', 'PayloadLen', 'DeviceID', 
-                                        'Timestamp', 'PacketID', 'accel', 
-                                        'Flags', 'Battery', 'CRC', 'time'])
+            # w_acc_cols = [f'waist_accel_{i}' for i in range(0, 100)]
+            # steps_df = pd.DataFrame(columns=['Timestamp', 'Side', 'Start_Frame', 'End_Frame', 'ID'] + w_acc_cols) 
+            # vgrf_cols = [f'vGRF_{i}' for i in range(0, 100)]
+            # vgrf_df = pd.DataFrame(columns=['ID','PeakvGRF'] + vgrf_cols)
+            # ESPData = pd.DataFrame(columns=['PacketType', 'PayloadLen', 'DeviceID', 
+            #                             'Timestamp', 'PacketID', 'accel', 
+            #                             'Flags', 'Battery', 'CRC', 'time'])
             
             # create figure and subplots for showing data
-            fig, axes = plt.subplots(nrows=3, ncols=1)
-            fig.set_figheight(10) 
-            fig.set_figwidth(8)
+            # fig, axes = plt.subplots(nrows=3, ncols=1)
+            # fig.set_figheight(10) 
+            # fig.set_figwidth(8)
 
 
             if run == 'serial':
                 # running in serial mode
-                # global serial_comm, running, ESPData, steps_df, vgrf_df
+                global serial_comm, running, ESPData, steps_df, vgrf_df
+                w_acc_cols = [f'waist_accel_{i}' for i in range(0, 100)]
+                steps_df = pd.DataFrame(columns=['Timestamp', 'Side', 'Start_Frame', 'End_Frame', 'ID'] + w_acc_cols) 
+                vgrf_cols = [f'vGRF_{i}' for i in range(0, 100)]
+                vgrf_df = pd.DataFrame(columns=['ID','PeakvGRF'] + vgrf_cols)
+                ESPData = pd.DataFrame(columns=['PacketType', 'PayloadLen', 'DeviceID', 
+                                        'Timestamp', 'PacketID', 'accel', 
+                                        'Flags', 'Battery', 'CRC', 'time'])
+                fig, axes = plt.subplots(nrows=3, ncols=1)
+                fig.set_figheight(10) 
+                fig.set_figwidth(8)
                 serial_comm = serial.Serial(PORT, BAUDRATE, timeout=1)
                 print(f"Connecting to {PORT} at {BAUDRATE} baud...")
-                reader_thread = threading.Thread(target=RP.read_serial, daemon=True)
+                reader_thread = threading.Thread(target=read_serial, daemon=True)
                 reader_thread.start()
 
                 user_input = input("")
@@ -139,4 +177,4 @@ def main(run):
 
 
 if __name__ == "__main__":
-    main(run='csv') # change to serial to run with sensors connected to the serial port
+    main(run='serial') # change to serial to run with sensors connected to the serial port
