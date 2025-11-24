@@ -41,7 +41,26 @@ class Trial:
         Returns:
             DataFrame containing processed sensor data
         """
-        return load_sensors_data(os.path.join(self.path, SENSORS_FILENAME))
+        try:
+            sensor_data = load_sensors_data(os.path.join(self.path, SENSORS_FILENAME))
+        except:
+            fn_options = [x for x in os.listdir(self.path) if 
+                          (
+                              '.csv' in x and \
+                              'IMU_data' in x and \
+                              self.subject_name in x
+                          )
+                          ]
+            if len(fn_options) == 1:
+                SENSORS_FILENAME = fn_options[0]
+            elif len(fn_options) == 0:
+                raise FileNotFoundError(f"No sensor data found.")
+            else:
+                raise FileNotFoundError(f"Too many sensor data files found: {fn_options}")
+            
+            sensor_data = load_sensors_data(os.path.join(self.path, SENSORS_FILENAME))
+
+        return sensor_data
 
     def load_treadmill(self) -> pd.DataFrame:
         """Load and process treadmill data from the trial directory.
