@@ -30,6 +30,8 @@ class SensorData:
     right_df: pd.DataFrame
     waist_df: pd.DataFrame
 
+    # determine effective sampling rate for each sensor
+    
 
 def _resample_accel(df: pd.DataFrame, resample_freq: int) -> pd.DataFrame:
     """Resample accelerometer data to a specified frequency.
@@ -41,10 +43,8 @@ def _resample_accel(df: pd.DataFrame, resample_freq: int) -> pd.DataFrame:
     Returns:
         DataFrame with resampled accelerometer data
     """
-    print('Resampling to: ', resample_freq)
+    # print('Resampling to: ', resample_freq)
     try:
-        # print(df['time'])
-        print(df.head())
         start, end = np.nanmin(df['time']), np.nanmax(df['time'])
         interval = 1 / resample_freq
 
@@ -126,7 +126,46 @@ def _read_sensors_csv(file_path: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.Da
         'right': df[df['DeviceID'] == 3]
     }
 
-    # print('Waist Sensor', sensor_data['waist'].head())
+    return tuple(organize(df) for df in sensor_data.values())
+    
+
+def _read_sensors_txt(file_path: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Read and parse sensor data from txt file.
+    
+    Args:
+        file_path: Path to the txt file containing sensor data
+        
+    Returns:
+        Tuple of DataFrames (left, right, waist) containing raw sensor data
+        
+    Raises:
+        FileNotFoundError: If the specified file doesn't exist
+    """
+    def organize(df: pd.DataFrame) -> pd.DataFrame:
+        """Sort and clean sensor DataFrame."""
+        cols_to_drop = ['DeviceID']
+        return df.drop(cols_to_drop, axis=1).sort_values(by='time').reset_index(drop=True)
+
+    df = pd.DataFrame(columns=['DeviceID', 'accel', 'time'])
+    with open(file_path, 'r', encoding='utf-8') as fp:
+        # Parse double-encoded JSON data
+        for line in fp:
+            row = json.loads(json.loads(line))
+            df.loc[len(df)] = [row['id'], row['accel'], row['time']]
+
+    # Extract data for each sensor
+    sensor_data = {
+        'waist': df[df['DeviceID'] == '3a'],
+        'left': df[df['DeviceID'] == '39'],
+        'right': df[df['DeviceID'] == '38']
+    }
+
+    # log raw sampling rates
+    for sensor in [sensor_data['waist'], sensor_data['left'], sensor_data['right']]:
+        elapsed_time = sensor.time.iloc[-1] - sensor.time.iloc[0]
+        num_samples = len(sensor)
+        samp_rate = num_samples / elapsed_time
+        print(f'Raw sampling rate: {samp_rate}')
 
     return tuple(organize(df) for df in sensor_data.values())
     
@@ -191,8 +230,18 @@ def _process_sensor_df(
         time_data = (df['Timestamp'] - start_time) / time_factor
         df['time'] = time_data
 
+        # log raw sampling rates
+        elapsed_time = df.time.iloc[-1] - df.time.iloc[0]
+        num_samples = len(df)
+        samp_rate = num_samples / elapsed_time
+        print(f'Raw sampling rate: {samp_rate}')
+
+
     # Resample
+    # print('shape before resampling: ', df.shape)
     df = _resample_accel(df, resample_freq)
+    # print(df.head())
+    # print('shape after resampling: ', df.shape)
 
     # convert to Gs (if needed)
     # df['accel'] /= GRAVITY 
@@ -202,8 +251,23 @@ def _process_sensor_df(
         sos = signal.butter(butter_ord, butter_cutoff, fs=resample_freq, output='sos')
         df['accel_filtered'] = signal.sosfiltfilt(sos, df['accel'])
     except:
-
         df['accel_filtered'] = df['accel']
+        print('Could not filter acceleration signal')
+
+    # print(df.iloc[5000:7000])
+
+
+    # plot pre and post processed 
+    # import matplotlib.pyplot as plt
+    # plt.figure()
+    # plt.plot(df['time'], df['accel'], label='resampled acc')
+    # plt.plot(df['time'], df['accel_filtered'], label='filtered acc')
+    # plt.xlim([50, 52])
+    # plt.xlabel('Time (s)')
+    # plt.ylabel('g')
+    # plt.legend()
+
+    # raise StopIteration
 
     return df
 
@@ -236,15 +300,18 @@ def load_sensors_data(
     if resample_freq <= 0:
         raise ValueError(f"resample_freq must be positive, got {resample_freq}")
 
+     # Load sensor data
     if '.json' in file_path:
-        # Load and process sensor data
         unprocessed_sensors = _read_sensors_json(file_path)
 
     elif '.csv' in file_path:
-        # Load and process sensor data
         unprocessed_sensors = _read_sensors_csv(file_path)
+    
+    elif '.txt' in file_path:
+        unprocessed_sensors = _read_sensors_txt(file_path)
 
-        processed_sensors = [
+    # process sensor data
+    processed_sensors = [
             _process_sensor_df(df, resample_freq, butter_ord, butter_cutoff)
             for df in unprocessed_sensors
         ]
