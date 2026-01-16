@@ -202,7 +202,7 @@ def _process_sensor_df(
     df: pd.DataFrame,
     resample_freq: int = 100,
     butter_ord: int = 4,
-    butter_cutoff: float = 10
+    butter_cutoff: float = 20
 ) -> pd.DataFrame:
     """Process sensor data with normalization, resampling, and filtering.
     
@@ -276,7 +276,7 @@ def load_sensors_data(
     file_path: str,
     resample_freq: int = 100,
     butter_ord: int = 4,
-    butter_cutoff: float = 0.2
+    butter_cutoff: float = 12
 ) -> SensorData:
     """Load and process sensor data from a JSON or CSV file.
     
@@ -309,6 +309,9 @@ def load_sensors_data(
     
     elif '.txt' in file_path:
         unprocessed_sensors = _read_sensors_txt(file_path)
+
+    else:
+        raise ValueError(f"file type not recognized: {file_path}")
 
     # process sensor data
     processed_sensors = [
