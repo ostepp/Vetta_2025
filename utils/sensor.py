@@ -112,18 +112,13 @@ def _read_sensors_csv(file_path: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.Da
         cols_to_drop = ['DeviceID', 'PacketType','PayloadLen']
         return df.drop(cols_to_drop, axis=1).sort_values(by='Timestamp').reset_index(drop=True)
 
-    # with open(file_path, 'r', encoding='utf-8') as fp:
-    #     # Parse double-encoded JSON data
-    #     rows = [json.loads(json.loads(r)) for r in fp.readlines()]
-    #     df = pd.DataFrame(rows)[['id', 'accel', 'time']]
-
     df = pd.read_csv(file_path)
 
     # Extract data for each sensor
     sensor_data = {
-        'waist': df[df['DeviceID'] == 1],
-        'left': df[df['DeviceID'] == 2],
-        'right': df[df['DeviceID'] == 3]
+        'waist': df[df['DeviceID'] == 2],
+        'left': df[df['DeviceID'] == 3],
+        'right': df[df['DeviceID'] == 1]
     }
 
     return tuple(organize(df) for df in sensor_data.values())
