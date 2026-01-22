@@ -226,6 +226,6 @@ def load_treadmill_data(
         for df in unprocessed_data
     ]
 
-    print(processed_data)
+    # print(processed_data)
 
     return TreadmillData(*processed_data)

@@ -42,8 +42,8 @@ VGRF_FILTERS = [
 
 # Stance parameters
 JERK_WINDOW_SIZE = 50
-MIN_STANCE_SIZE = 80  # 0.8s
-MAX_STANCE_SIZE = 140  # 1.4s
+MIN_STANCE_SIZE = 80  # 0.8s assuming 100 hz
+MAX_STANCE_SIZE = 140  # 1.4s assuming 100 hz
 STANCE_MATCHING_TIME_THRESHOLD = 5
 
 @dataclass

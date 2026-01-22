@@ -116,8 +116,8 @@ def _read_sensors_csv(file_path: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.Da
 
     # Extract data for each sensor
     sensor_data = {
-        'waist': df[df['DeviceID'] == 2],
-        'left': df[df['DeviceID'] == 3],
+        'waist': df[df['DeviceID'] == 3],
+        'left': df[df['DeviceID'] == 2],
         'right': df[df['DeviceID'] == 1]
     }
 
@@ -165,33 +165,33 @@ def _read_sensors_txt(file_path: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.Da
     return tuple(organize(df) for df in sensor_data.values())
     
 
-def input_df(df) -> dict: #Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Read and parse sensor data from JSON file.
+# def input_df(df) -> dict: #Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+#     """Read and parse sensor data from JSON file.
     
-    Args:
-        file_path: Path to the JSON file containing sensor data
+#     Args:
+#         file_path: Path to the JSON file containing sensor data
         
-    Returns:
-        Tuple of DataFrames (left, right, waist) containing raw sensor data
+#     Returns:
+#         Tuple of DataFrames (left, right, waist) containing raw sensor data
         
-    Raises:
-        FileNotFoundError: If the specified file doesn't exist
-    """
-    def organize(df: pd.DataFrame) -> pd.DataFrame:
-        """Sort and clean sensor DataFrame."""
-        return df.sort_values(by='time').reset_index(drop=True)
+#     Raises:
+#         FileNotFoundError: If the specified file doesn't exist
+#     """
+#     def organize(df: pd.DataFrame) -> pd.DataFrame:
+#         """Sort and clean sensor DataFrame."""
+#         return df.sort_values(by='time').reset_index(drop=True)
 
-    # Extract data for each sensor
-    sensor_data = {
-        'waist': df[df['DeviceID'] == 1],
-        'left': df[df['DeviceID'] == 2],
-        'right': df[df['DeviceID'] == 3]
-        # 'waist': organize(df[df['DeviceID'] == 1]),
-        # 'left': organize(df[df['DeviceID'] == 2]),
-        # 'right': organize(df[df['DeviceID'] == 3])
-    }
+#     # Extract data for each sensor
+#     sensor_data = {
+#         'waist': df[df['DeviceID'] == 3],
+#         'left': df[df['DeviceID'] == 1],
+#         'right': df[df['DeviceID'] == 2]
+#         # 'waist': df[df['DeviceID'] == 1],
+#         # 'left': df[df['DeviceID'] == 2],
+#         # 'right': df[df['DeviceID'] == 3]
+#     }
 
-    return sensor_data #tuple(organize(df) for df in sensor_data.values())
+#     return sensor_data #tuple(organize(df) for df in sensor_data.values())
 
 def _process_sensor_df(
     df: pd.DataFrame,

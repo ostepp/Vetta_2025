@@ -141,8 +141,8 @@ class StanceAnalyzer:
         self,
         leg_accel: pd.Series,
         leg_accel_unfiltered: pd.Series,
-         waist_accel: pd.Series
-         #start_idx: List[int]
+        waist_accel: pd.Series
+        #start_idx: List[int]
     ) -> Tuple[List[int], List[pd.Series]]:
         """Extract stances from sensor data.
         
@@ -161,10 +161,13 @@ class StanceAnalyzer:
         # Split waist into slices defined by strike indices
         waist_slices = [
             waist_accel[i:j]
-            for i, j in zip(refined_strike_indices, refined_strike_indices[1:] + [len(waist_accel)])
+            for i, j in zip(refined_strike_indices[:-1], refined_strike_indices[1:])
+            # for i, j in zip(refined_strike_indices, refined_strike_indices[1:] + [len(waist_accel)])
         ]
             #for i, j in zip(start_idx, start_idx[1:] + [len(waist_accel)])
         #]
+
+        # for 
 
         stances = [self.stance_processor.normalize_stance(slice) for slice in waist_slices]
         # print(waist_slices)
@@ -206,18 +209,18 @@ class StanceAnalyzer:
         accel_strikes, accel_stances = self.extract_sensor_stances(
             leg_accel, leg_accel_unfiltered, waist_accel
         )
-        print("ACCEL STRIKES:", accel_strikes)
-        print("ACCEL STANCES:", accel_stances)
+        # print("ACCEL STRIKES:", accel_strikes)
+        # print("ACCEL STANCES:", accel_stances)
         #start_idx, accel_stances = self.extract_sensor_stances(
         #    leg_accel, leg_accel_unfiltered, waist_accel, start_idx
         #)
         #accel_strikes = start_idx
-        if len(accel_strikes) != len(accel_stances):
-            raise ValueError(f"Number of strikes ({len(accel_strikes)}) != number of stances ({len(accel_stances)}) in accel data")
+        # if len(accel_strikes) != len(accel_stances):
+        #     raise ValueError(f"Number of strikes ({len(accel_strikes)}) != number of stances ({len(accel_stances)}) in accel data")
 
         vgrf_strikes, vgrf_stances = self.extract_treadmill_stances(vgrf)
-        print("VGRF STRIKES:", vgrf_strikes)
-        print("VGRF STANCES:", vgrf_stances)
+        # print("VGRF STRIKES:", vgrf_strikes)
+        # print("VGRF STANCES:", vgrf_stances)
         if len(vgrf_strikes) != len(vgrf_stances):
             raise ValueError(f"Number of strikes ({len(vgrf_strikes)}) != number of stances ({len(vgrf_stances)}) in vgrf data")
 
