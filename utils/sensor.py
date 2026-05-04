@@ -49,7 +49,8 @@ def _resample_accel(df: pd.DataFrame, resample_freq: int) -> pd.DataFrame:
         interval = 1 / resample_freq
 
         out_df = pd.DataFrame({
-            'time': np.arange(start, end, interval),
+            # 'time': np.arange(start, end, interval),
+            'time': np.arange(0, end-start, interval),
             'accel': np.interp(
                 np.arange(start, end, interval),
                 df['time'],
@@ -239,7 +240,8 @@ def _process_sensor_df(
     # print('shape after resampling: ', df.shape)
 
     # convert to Gs (if needed)
-    # df['accel'] /= GRAVITY 
+    if df['accel'].max() > 20:  # if accel values are in m/s², convert to Gs
+        df['accel'] /= GRAVITY 
 
     # Apply Butterworth filter
     try:
@@ -250,7 +252,6 @@ def _process_sensor_df(
         print('Could not filter acceleration signal')
 
     # print(df.iloc[5000:7000])
-
 
     # plot pre and post processed 
     # import matplotlib.pyplot as plt
