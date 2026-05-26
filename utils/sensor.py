@@ -65,15 +65,19 @@ def _resample_accel(df: pd.DataFrame, resample_freq: int) -> pd.DataFrame:
     return out_df
 
 
-def _read_sensors_json(file_path: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def _read_sensors_json(file_path: str,
+                       sensor_ids: dict,
+                       ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Read and parse sensor data from JSON file.
-    
+
     Args:
         file_path: Path to the JSON file containing sensor data
-        
+        sensor_ids: Dict mapping 'left'/'right'/'waist' to their id values.
+            If falsy, falls back to legacy hex IDs ('39'/'38'/'3a').
+
     Returns:
         Tuple of DataFrames (left, right, waist) containing raw sensor data
-        
+
     Raises:
         FileNotFoundError: If the specified file doesn't exist
     """
@@ -86,17 +90,18 @@ def _read_sensors_json(file_path: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.D
         rows = [json.loads(json.loads(r)) for r in fp.readlines()]
         df = pd.DataFrame(rows)[['id', 'accel', 'time']]
 
-        # Extract data for each sensor
-        sensor_data = {
-            'waist': df[df['id'] == '3a'],
-            'left': df[df['id'] == '39'],
-            'right': df[df['id'] == '38']
-        }
+        ids = sensor_ids if sensor_ids else {'left': '39', 'right': '38', 'waist': '3a'}
 
-        return tuple(organize(df) for df in sensor_data.values())
+        return (
+            organize(df[df['id'] == ids['left']]),
+            organize(df[df['id'] == ids['right']]),
+            organize(df[df['id'] == ids['waist']]),
+        )
     
 
-def _read_sensors_csv(file_path: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def _read_sensors_csv(file_path: str, 
+                      sensor_ids: dict,
+                      ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Read and parse sensor data from CSV file.
     
     Args:
@@ -115,25 +120,28 @@ def _read_sensors_csv(file_path: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.Da
 
     df = pd.read_csv(file_path)
 
-    # Extract data for each sensor
-    sensor_data = {
-        'waist': df[df['DeviceID'] == 3],
-        'left': df[df['DeviceID'] == 2],
-        'right': df[df['DeviceID'] == 1]
-    }
+    ids = sensor_ids if sensor_ids else {'left': 2, 'right': 1, 'waist': 3}
 
-    return tuple(organize(df) for df in sensor_data.values())
+    return (
+        organize(df[df['DeviceID'] == ids['left']]),
+        organize(df[df['DeviceID'] == ids['right']]),
+        organize(df[df['DeviceID'] == ids['waist']]),
+    )
     
 
-def _read_sensors_txt(file_path: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def _read_sensors_txt(file_path: str,
+                      sensor_ids: dict,
+                      ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Read and parse sensor data from txt file.
-    
+
     Args:
         file_path: Path to the txt file containing sensor data
-        
+        sensor_ids: Dict mapping 'left'/'right'/'waist' to their DeviceID values.
+            If falsy, falls back to legacy hex IDs ('39'/'38'/'3a').
+
     Returns:
         Tuple of DataFrames (left, right, waist) containing raw sensor data
-        
+
     Raises:
         FileNotFoundError: If the specified file doesn't exist
     """
@@ -149,21 +157,20 @@ def _read_sensors_txt(file_path: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.Da
             row = json.loads(json.loads(line))
             df.loc[len(df)] = [row['id'], row['accel'], row['time']]
 
-    # Extract data for each sensor
-    sensor_data = {
-        'waist': df[df['DeviceID'] == '3a'],
-        'left': df[df['DeviceID'] == '39'],
-        'right': df[df['DeviceID'] == '38']
-    }
+    ids = sensor_ids if sensor_ids else {'left': '39', 'right': '38', 'waist': '3a'}
+
+    left_raw = df[df['DeviceID'] == ids['left']]
+    right_raw = df[df['DeviceID'] == ids['right']]
+    waist_raw = df[df['DeviceID'] == ids['waist']]
 
     # log raw sampling rates
-    for sensor in [sensor_data['waist'], sensor_data['left'], sensor_data['right']]:
+    for sensor in [waist_raw, left_raw, right_raw]:
         elapsed_time = sensor.time.iloc[-1] - sensor.time.iloc[0]
         num_samples = len(sensor)
         samp_rate = num_samples / elapsed_time
         print(f'Raw sampling rate: {samp_rate}')
 
-    return tuple(organize(df) for df in sensor_data.values())
+    return (organize(left_raw), organize(right_raw), organize(waist_raw))
     
 
 # def input_df(df) -> dict: #Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
@@ -270,14 +277,16 @@ def _process_sensor_df(
 
 def load_sensors_data(
     file_path: str,
+    sensor_ids: dict,
     resample_freq: int = 100,
     butter_ord: int = 4,
-    butter_cutoff: float = 12
-) -> SensorData:
+    butter_cutoff: float = 12,
+    ) -> SensorData:
     """Load and process sensor data from a JSON or CSV file.
     
     Args:
         file_path: Path to the file containing sensor data
+        sensor_ids: Dictionary mapping sensor names to their DeviceIDs
         resample_freq: Target sampling frequency in Hz
         butter_ord: Order of Butterworth filter
         butter_cutoff: Cutoff frequency for Butterworth filter
@@ -298,13 +307,13 @@ def load_sensors_data(
 
      # Load sensor data
     if '.json' in file_path:
-        unprocessed_sensors = _read_sensors_json(file_path)
+        unprocessed_sensors = _read_sensors_json(file_path, sensor_ids)
 
     elif '.csv' in file_path:
-        unprocessed_sensors = _read_sensors_csv(file_path)
+        unprocessed_sensors = _read_sensors_csv(file_path, sensor_ids)
     
     elif '.txt' in file_path:
-        unprocessed_sensors = _read_sensors_txt(file_path)
+        unprocessed_sensors = _read_sensors_txt(file_path, sensor_ids)
 
     else:
         raise ValueError(f"file type not recognized: {file_path}")

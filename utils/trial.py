@@ -22,18 +22,49 @@ class Trial:
         subject_name: Name of the subject
         subject_weight: Weight of the subject in kg
     """
-    def __init__(self, path: str, subject_name: str, subject_weight: float) -> None:
+    def __init__(self, path: str, 
+                 subject_name: str, 
+                 subject_weight: float, 
+                 subject_info: dict) -> None:
         """Initialize trial with path and subject information.
         
         Args:
             path: Path to trial directory
             subject_name: Name of the subject
             subject_weight: Weight of the subject in kg
+            subject_info: Additional subject information from info.json
         """
         self.path = path
         self.name = os.path.basename(path)
         self.subject_name = subject_name
         self.subject_weight = subject_weight
+
+        # assign sensors based on info.json if available, otherwise use defaults
+        if 'left_sensor' in subject_info: 
+            self.left_sensor = subject_info['left_sensor']
+        else:
+            self.left_sensor = None
+        if 'right_sensor' in subject_info:
+            self.right_sensor = subject_info['right_sensor']
+        else: 
+            self.right_sensor = None
+        if 'waist_sensor' in subject_info:
+            self.waist_sensor = subject_info['waist_sensor']
+        else: 
+            self.waist_sensor = None
+        if self.left_sensor and self.right_sensor and self.waist_sensor:
+            self.sensor_ids = {'left': self.left_sensor, 
+                               'right': self.right_sensor, 
+                               'waist': self.waist_sensor}
+            print(f"Assigned sensor IDs for trial {self.name}: {self.sensor_ids}")
+        else: 
+            self.sensor_ids = None
+
+        if 'left_vgrf_offsets' in subject_info:
+            self.left_vgrf_offsets = subject_info['left_vgrf_offsets']
+        if 'right_vgrf_offsets' in subject_info:
+            self.right_vgrf_offsets = subject_info['right_vgrf_offsets']
+
 
     def load_sensors(self) -> pd.DataFrame:
         """Load and process sensor data from the trial directory.
@@ -42,7 +73,7 @@ class Trial:
             DataFrame containing processed sensor data
         """
         try:
-            sensor_data = load_sensors_data(os.path.join(self.path, SENSORS_FILENAME))
+            sensor_data = load_sensors_data(os.path.join(self.path, SENSORS_FILENAME), self.sensor_ids)
         except:
             fn_options = [x for x in os.listdir(self.path) if 
                           (
@@ -66,7 +97,7 @@ class Trial:
                 else:
                     raise FileNotFoundError(f"Too many sensor data files found: {fn_options}")
             
-            sensor_data = load_sensors_data(os.path.join(self.path, SENSORS_FILENAME))
+            sensor_data = load_sensors_data(os.path.join(self.path, SENSORS_FILENAME), self.sensor_ids)
 
         return sensor_data
 
@@ -100,10 +131,10 @@ def load_trials(subject_path: str) -> List[Trial]:
         raise FileNotFoundError(f"info.json is missing from {subject_path}")
 
     with open(info_path, 'r', encoding='utf-8') as fp:
-        info = json.load(fp)
-        if 'weight' not in info:
+        subject_info = json.load(fp)
+        if 'weight' not in subject_info:
             raise ValueError("info.json is missing the weight field")
-        subject_weight = float(info['weight'])
+        subject_weight = float(subject_info['weight'])
 
     # Load trials
     trials_dir = os.path.join(subject_path, 'trials')
@@ -124,7 +155,7 @@ def load_trials(subject_path: str) -> List[Trial]:
             raise FileNotFoundError(f"{TREADMILL_FILENAME} missing from {trial_dir}")
 
         # Create trial object
-        trial = Trial(trial_dir, subject_name, subject_weight)
+        trial = Trial(trial_dir, subject_name, subject_weight, subject_info)
         results.append(trial)
 
     return results
@@ -149,4 +180,6 @@ def load_trial(subjects_path: str, subject_name: str, trial_name: str) -> Trial:
     with open(subject_info_path, 'r', encoding='utf-8') as f:
         subject_info = json.load(f)
 
-    return Trial(trial_path, subject_name, subject_info['weight'])
+    
+
+    return Trial(trial_path, subject_name, subject_info['weight'], subject_info)
