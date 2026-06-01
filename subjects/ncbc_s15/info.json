@@ -1,3 +1,25 @@
 {
-    "weight": 105
+    "weight": 105,
+
+    "left_sensor": "39", 
+
+    "right_sensor": "3a",
+
+    "waist_sensor": "38",
+
+    "left_vgrf_offsets": {
+        "TM_m3": 480, 
+        "norm": 472,
+        "TM_p3": 415,
+        "TM_p6": 805,
+        "TM_p9": 365
+    },
+
+    "right_vgrf_offsets": {
+        "TM_m3": 480, 
+        "norm": 472,
+        "TM_p3": 415,
+        "TM_p6": 805,
+        "TM_p9": 365
+    }
 }
