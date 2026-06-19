@@ -9,6 +9,8 @@ from utils.treadmill import load_treadmill_data
 # Constants
 SENSORS_FILENAME = 'raw-sensors.txt'
 TREADMILL_FILENAME = 'raw-treadmill.mot'
+# SENSORS_FILENAME = 'IMU_data_RevB_v3_ncbc_s17_tm_p9_t1.csv'
+# TREADMILL_FILENAME = 'ncbc_s17_tm_p9_t1_1.forces'
 
 class Trial:
     """Container for all data from a single trial.

@@ -1,0 +1,25 @@
+{
+    "weight": 79, 
+
+    "left_sensor": 2, 
+
+    "right_sensor": 3,
+
+    "waist_sensor": 1,
+
+    "left_vgrf_offsets": {
+        "m3":  
+        "norm": 
+        "p3": 
+        "p6": 
+        "p9": 
+    },
+
+    "right_vgrf_offsets": {
+        "m3": 
+        "norm": 
+        "p3": 
+        "p6": 
+        "p9": 
+    }
+}
