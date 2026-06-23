@@ -8,18 +8,18 @@
     "waist_sensor": "38",
 
     "left_vgrf_offsets": {
-        "TM_m3": 500, 
-        "norm": 595,
-        "TM_p3": 140,
-        "TM_p6": -1,
-        "TM_p9": -1
+        "TM_m3": 689, 
+        "norm": 689,
+        "TM_p3": 691,
+        "TM_p6": 0,
+        "TM_p9": 0
     },
 
     "right_vgrf_offsets": {
-        "TM_m3": 475, 
-        "norm": 600,
-        "TM_p3": 180,
-        "TM_p6": -1,
-        "TM_p9": -1
+        "TM_m3": 679, 
+        "norm": 689,
+        "TM_p3": 691,
+        "TM_p6": 0,
+        "TM_p9": 0
     }
 }

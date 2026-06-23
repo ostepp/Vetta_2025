@@ -9,7 +9,7 @@
 
     "left_vgrf_offsets": {
         "TM_m3": 680, 
-        "norm": 695,
+        "norm": 683,
         "TM_p3": 940,
         "TM_p6": 1800,
         "TM_p9": 580
@@ -17,7 +17,7 @@
 
     "right_vgrf_offsets": {
         "TM_m3": 680, 
-        "norm": 695,
+        "norm": 683,
         "TM_p3": 940,
         "TM_p6": 1800,
         "TM_p9": 580

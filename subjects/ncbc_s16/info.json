@@ -8,18 +8,18 @@
     "waist_sensor": 1,
 
     "left_vgrf_offsets": {
-        "m3":  
-        "norm": 
-        "p3": 
-        "p6": 
-        "p9": 
+        "m3":  0,
+        "norm": 0,
+        "p3": 0,
+        "p6": -236,
+        "p9": 405
     },
 
     "right_vgrf_offsets": {
-        "m3": 
-        "norm": 
-        "p3": 
-        "p6": 
-        "p9": 
+        "m3": 0,
+        "norm": 0,
+        "p3": 0,
+        "p6": -234,
+        "p9": 405
     }
 }
